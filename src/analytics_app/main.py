@@ -1,35 +1,19 @@
 import os
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
-
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from typing import Optional
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-SERVICE_NAME = os.getenv("SERVICE_NAME", "analytics-service")
-SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.5.0")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "analytics-integrated-service")
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.1.0-analytics")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "local-dev-token")
 
 app = FastAPI(
-    title="FIT4110 Lab 05 - Analytics Service",
+    title="Smart Campus — Analytics Service",
     version=SERVICE_VERSION,
-    description="Analytics service chạy trong Docker Compose stack cho Lab 05.",
+    description="Analytics service cho Lab 05 Docker Compose.",
 )
-
-
-class ProblemDetails(BaseModel):
-    type: str = "about:blank"
-    title: str
-    status: int = Field(..., ge=400, le=599)
-    detail: str
-    instance: Optional[str] = None
-
-
-class HealthResponse(BaseModel):
-    status: str
-    service: str
-    version: str
 
 
 def build_problem(*, status_code, title, detail, instance=None):
@@ -57,7 +41,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content=build_problem(status_code=422, title="Validation error",
-                               detail="Request validation failed", instance=str(request.url.path)),
+                               detail="Request validation failed",
+                               instance=str(request.url.path)),
         media_type="application/problem+json",
     )
 
@@ -71,57 +56,140 @@ def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> 
         )
 
 
-# ── Dữ liệu mẫu (in-memory, đủ để test) ──────────────────────────────────────
+# ── Dữ liệu mẫu ──────────────────────────────────────────────────────────────
 
-STATS = {
-    "totalReadings": 42,
-    "avgTemperature": 31.5,
-    "avgHumidity": 65.2,
-    "alertCount": 3,
-    "generatedAt": "2026-06-14T08:00:00Z",
-}
-
-EVENTS = [
-    {"eventId": "e001", "type": "telemetry.ingested", "zone": "ZONE-A", "ts": "2026-06-14T07:00:00Z"},
-    {"eventId": "e002", "type": "camera.motion.detected", "zone": "ZONE-B", "ts": "2026-06-14T07:05:00Z"},
-    {"eventId": "e003", "type": "access.log.created", "zone": "ZONE-A", "ts": "2026-06-14T07:10:00Z"},
+telemetry_items = [
+    {
+        "eventId": "d6703cc8-9e79-415d-ac03-a4dc7f6ab43c",
+        "eventType": "telemetry.ingested",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "source": "iot",
+        "data": {
+            "deviceId": "SENSOR-001",
+            "sensorType": "temperature",
+            "value": 38.5,
+            "unit": "celsius",
+            "timestamp": "2019-08-24T14:15:22Z",
+            "zoneId": "ZONE-A"
+        }
+    }
 ]
 
-ALERTS = [
-    {"alertId": "a001", "severity": "high", "message": "Temperature spike in ZONE-A", "ts": "2026-06-14T07:15:00Z"},
+camera_motion_items = [
+    {
+        "eventId": "c6703cc8-9e79-415d-ac03-a4dc7f6ab43c",
+        "correlationId": "48fb4cd3-2ef6-4479-bea1-7c92721b988c",
+        "eventType": "camera.motion.detected",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "source": "camera",
+        "data": {
+            "cameraId": "CAM-001",
+            "zoneId": "ZONE-A",
+            "confidence": 0.91
+        }
+    }
 ]
+
+policy_decision_items = [
+    {
+        "eventId": "p6703cc8-9e79-415d-ac03-a4dc7f6ab43c",
+        "eventType": "policy.decision.created",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "source": "core-business",
+        "data": {
+            "policyId": "POLICY-001",
+            "decision": "allow",
+            "zoneId": "ZONE-A"
+        }
+    }
+]
+
+access_log_items = [
+    {
+        "eventId": "a6703cc8-9e79-415d-ac03-a4dc7f6ab43c",
+        "correlationId": "48fb4cd3-2ef6-4479-bea1-7c92721b988c",
+        "eventType": "access.log.created",
+        "timestamp": "2019-08-24T14:15:22Z",
+        "source": "access-gate",
+        "data": {
+            "gateId": "GATE-001",
+            "zoneId": "ZONE-A",
+            "direction": "in",
+            "personHash": "person-001"
+        }
+    }
+]
+
+alerts_items = [
+    {
+        "id": "a001",
+        "sourceService": "core-business",
+        "alertType": "UNAUTHORIZED_ACCESS",
+        "severity": "HIGH",
+        "message": "Phát hiện truy cập trái phép tại cổng chính",
+        "status": "OPEN",
+        "createdAt": "2026-06-14T08:00:00Z"
+    }
+]
+
+
+class AlertPayload(BaseModel):
+    sourceService: str
+    alertType: str
+    severity: str
+    message: str
+    relatedEventId: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 def health():
-    return HealthResponse(status="ok", service=SERVICE_NAME, version=SERVICE_VERSION)
-
+    return {
+        "status": "ok",
+        "service": SERVICE_NAME,
+        "version": SERVICE_VERSION
+    }
 
 @app.head("/health")
 def health_head():
     return None
 
+@app.get("/telemetry", dependencies=[Depends(verify_bearer_token)])
+def get_telemetry():
+    return {"items": telemetry_items, "total": len(telemetry_items), "nextCursor": None}
 
-@app.get("/analytics/summary", dependencies=[Depends(verify_bearer_token)])
-def get_summary():
-    """Trả về thống kê tổng hợp từ dữ liệu cảm biến."""
-    return STATS
+@app.get("/camera/motion", dependencies=[Depends(verify_bearer_token)])
+def get_camera_motion():
+    return {"items": camera_motion_items, "total": len(camera_motion_items), "nextCursor": None}
 
+@app.get("/policy-decisions", dependencies=[Depends(verify_bearer_token)])
+def get_policy_decisions():
+    return {"items": policy_decision_items, "total": len(policy_decision_items), "nextCursor": None}
 
-@app.get("/analytics/events", dependencies=[Depends(verify_bearer_token)])
-def get_events(limit: int = 10):
-    """Trả về danh sách event gần nhất."""
-    if limit < 1 or limit > 100:
-        raise HTTPException(status_code=422,
-                            detail=build_problem(status_code=422, title="Invalid limit",
-                                                  detail="limit must be between 1 and 100",
-                                                  instance="/analytics/events"))
-    return {"items": EVENTS[:limit]}
+@app.get("/access/logs", dependencies=[Depends(verify_bearer_token)])
+def get_access_logs():
+    return {"items": access_log_items, "total": len(access_log_items), "nextCursor": None}
 
-
-@app.get("/analytics/alerts", dependencies=[Depends(verify_bearer_token)])
+@app.get("/alerts", dependencies=[Depends(verify_bearer_token)])
 def get_alerts():
-    """Trả về danh sách alert hiện tại."""
-    return {"items": ALERTS}
+    return {"items": alerts_items, "total": len(alerts_items), "nextCursor": None}
+
+@app.post("/alerts", status_code=201, dependencies=[Depends(verify_bearer_token)])
+def create_alert(payload: AlertPayload):
+    new_alert = {
+        "id": "alert-new-001",
+        "sourceService": payload.sourceService,
+        "alertType": payload.alertType,
+        "severity": payload.severity,
+        "message": payload.message,
+        "status": "OPEN",
+        "createdAt": "2026-06-14T08:00:00Z"
+    }
+    alerts_items.append(new_alert)
+    return new_alert
+
+@app.get("/events", dependencies=[Depends(verify_bearer_token)])
+def get_events():
+    all_events = telemetry_items + camera_motion_items + policy_decision_items + access_log_items
+    return {"items": all_events, "total": len(all_events), "nextCursor": None}

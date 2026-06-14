@@ -11,91 +11,111 @@
         "method": "GET",
         "url": "{{baseUrl}}/health"
       },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
-              "pm.test('Service ok', function() { var json = pm.response.json(); pm.expect(json.status).to.eql('ok'); });"
-            ]
-          }
-        }
-      ]
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Service ok', function() { var j = pm.response.json(); pm.expect(j.status).to.eql('ok'); });"
+      ]}}]
     },
     {
-      "name": "Get Summary",
+      "name": "Get Telemetry",
       "request": {
         "method": "GET",
-        "header": [{"key": "Authorization", "value": "Bearer {{authToken}}"}],
-        "url": "{{baseUrl}}/analytics/summary"
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/telemetry"
       },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
-              "pm.test('Has totalReadings', function() { var json = pm.response.json(); pm.expect(json).to.have.property('totalReadings'); });"
-            ]
-          }
-        }
-      ]
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
     },
     {
-      "name": "Get Events",
+      "name": "Get Camera Motion",
       "request": {
         "method": "GET",
-        "header": [{"key": "Authorization", "value": "Bearer {{authToken}}"}],
-        "url": "{{baseUrl}}/analytics/events"
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/camera/motion"
       },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
-              "pm.test('Has items', function() { var json = pm.response.json(); pm.expect(json).to.have.property('items'); });"
-            ]
-          }
-        }
-      ]
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
+    },
+    {
+      "name": "Get Policy Decisions",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/policy-decisions"
+      },
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
+    },
+    {
+      "name": "Get Access Logs",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/access/logs"
+      },
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
     },
     {
       "name": "Get Alerts",
       "request": {
         "method": "GET",
-        "header": [{"key": "Authorization", "value": "Bearer {{authToken}}"}],
-        "url": "{{baseUrl}}/analytics/alerts"
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/alerts"
       },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
-              "pm.test('Has items', function() { var json = pm.response.json(); pm.expect(json).to.have.property('items'); });"
-            ]
-          }
-        }
-      ]
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
+    },
+    {
+      "name": "Create Alert",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Authorization","value": "Bearer {{authToken}}"},
+          {"key": "Content-Type","value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"sourceService\":\"core-business\",\"alertType\":\"UNAUTHORIZED_ACCESS\",\"severity\":\"HIGH\",\"message\":\"Test alert from Newman\"}"
+        },
+        "url": "{{baseUrl}}/alerts"
+      },
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 201', function() { pm.response.to.have.status(201); });",
+        "pm.test('Has id', function() { pm.expect(pm.response.json()).to.have.property('id'); });"
+      ]}}]
+    },
+    {
+      "name": "Get Events",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization","value": "Bearer {{authToken}}"}],
+        "url": "{{baseUrl}}/events"
+      },
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 200', function() { pm.response.to.have.status(200); });",
+        "pm.test('Has items', function() { pm.expect(pm.response.json()).to.have.property('items'); });"
+      ]}}]
     },
     {
       "name": "Unauthorized - No Token",
       "request": {
         "method": "GET",
-        "url": "{{baseUrl}}/analytics/summary"
+        "url": "{{baseUrl}}/telemetry"
       },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('Status 401', function() { pm.response.to.have.status(401); });"
-            ]
-          }
-        }
-      ]
+      "event": [{"listen": "test","script": {"exec": [
+        "pm.test('Status 401', function() { pm.response.to.have.status(401); });"
+      ]}}]
     }
   ]
 }

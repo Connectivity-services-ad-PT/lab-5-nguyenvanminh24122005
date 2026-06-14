@@ -1,0 +1,1397 @@
+openapi: 3.1.0
+info:
+  title: Smart Campus — Integrated Analytics Operations Contract
+  version: 1.0.0
+  description: |
+    Biên bản hợp đồng tích hợp API và sự kiện tổng hợp cho phân hệ Analytics (A5/B5).
+    Chứa toàn bộ các REST endpoint truy vấn lịch sử (backfill) và đặc tả sự kiện Queue async cho 4 luồng tích hợp:
+    1. IoT Ingestion -> Analytics (Pair-06)
+    2. Camera Stream -> Analytics (Pair-07)
+    3. Core Business -> Analytics (Pair-08)
+    4. Access Gate -> Analytics (Pair-09)
+  contact:
+    name: FIT4110 Analytics Team
+    email: fit4110@example.edu.vn
+servers:
+  - url: http://localhost:4010
+    description: Prism mock server
+tags:
+  - name: health
+    description: Kiểm tra trạng thái service
+  - name: telemetry
+    description: IoT telemetry and availability
+  - name: camera
+    description: Camera motion and frame analysis
+  - name: policies
+    description: Core policy decisions
+  - name: alerts
+    description: System alerts
+  - name: access
+    description: Gate access logs
+  - name: events
+    description: Unified Analytics Events query
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Kiểm tra trạng thái service
+      description: Endpoint kiểm tra service còn hoạt động.
+      tags: [health]
+      security: []
+      responses:
+        '200':
+          description: Service đang hoạt động
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    service: analytics-integrated-service
+                    time: '2026-05-19T08:00:00Z'
+
+  /telemetry:
+    get:
+      operationId: getTelemetry
+      summary: Lấy telemetry data
+      description: Analytics query telemetry để aggregate theo giờ/ngày.
+      tags: [telemetry]
+      parameters:
+        - name: deviceId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: zoneId
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách telemetry data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /devices/{deviceId}/status:
+    get:
+      operationId: getDeviceStatus
+      summary: Lấy trạng thái device
+      description: Analytics query trạng thái device (online/offline/maintenance).
+      tags: [telemetry]
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z0-9-]+$'
+      responses:
+        '200':
+          description: Trạng thái device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /camera/motion:
+    get:
+      operationId: getCameraMotionEvents
+      summary: Lấy lịch sử phát hiện chuyển động
+      description: Analytics query lịch sử motion events của camera.
+      tags: [camera]
+      parameters:
+        - name: cameraId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: zoneId
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách chuyển động của camera
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CameraMotionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /camera/frame-analysis:
+    get:
+      operationId: getCameraFrameAnalysis
+      summary: Lấy dữ liệu phân tích frame camera
+      description: Analytics query dữ liệu phân tích frame của camera.
+      tags: [camera]
+      parameters:
+        - name: cameraId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: abnormalType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [none, crowd, intrusion, loitering, camera_tamper, unknown]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách phân tích frame
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CameraFrameAnalysisList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /policy-decisions:
+    get:
+      operationId: getPolicyDecisions
+      summary: Lấy danh sách quyết định chính sách
+      description: Analytics query danh sách policy decisions để aggregate KPI.
+      tags: [policies]
+      parameters:
+        - name: policyId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: result
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [allow, deny]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách quyết định chính sách
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyDecisionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts:
+    post:
+      operationId: createAlert
+      summary: Tạo cảnh báo mới
+      description: Endpoint mẫu để Provider nhận yêu cầu tạo cảnh báo từ Consumer.
+      tags: [alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertRequest'
+            examples:
+              unauthorizedAccess:
+                value:
+                  sourceService: core-business
+                  alertType: UNAUTHORIZED_ACCESS
+                  severity: HIGH
+                  message: Phát hiện truy cập trái phép tại cổng chính
+                  relatedEventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+      responses:
+        '201':
+          description: Cảnh báo đã được tạo
+          headers:
+            Location:
+              description: URI của alert vừa tạo.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+              examples:
+                created:
+                  value:
+                    id: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                    sourceService: core-business
+                    alertType: UNAUTHORIZED_ACCESS
+                    severity: HIGH
+                    message: Phát hiện truy cập trái phép tại cổng chính
+                    relatedEventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                    status: OPEN
+                    createdAt: '2026-05-10T08:00:00Z'
+                    resolvedAt: '2026-05-10T08:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: getAlerts
+      summary: Lấy danh sách alert
+      description: Analytics query danh sách alert được sinh ra từ hệ thống.
+      tags: [alerts]
+      parameters:
+        - name: alertType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách alerts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts/recent:
+    get:
+      operationId: getRecentAlerts
+      summary: Lấy các cảnh báo gần đây
+      description: Endpoint mẫu cho cặp Analytics ↔ Core Business.
+      tags: [alerts]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Số cảnh báo tối đa cần lấy.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Danh sách cảnh báo gần đây
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    minItems: 0
+                    maxItems: 100
+                    items:
+                      $ref: '#/components/schemas/Alert'
+              examples:
+                recentAlerts:
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alerts/{alertId}:
+    get:
+      operationId: getAlertById
+      summary: Chi tiết một alert
+      description: Analytics query chi tiết alert theo ID.
+      tags: [alerts]
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chi tiết alert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /access/logs:
+    get:
+      operationId: getAccessLogs
+      summary: Lấy danh sách lịch sử ra vào
+      description: Analytics query danh sách log quét thẻ thành công/thất bại để thống kê.
+      tags: [access]
+      parameters:
+        - name: gateId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [in, out]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách logs quét thẻ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessLogList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /access/denied-logs:
+    get:
+      operationId: getAccessDeniedLogs
+      summary: Lấy danh sách quẹt thẻ bị từ chối
+      description: Analytics query danh sách quẹt thẻ bị từ chối phục vụ báo cáo vận hành.
+      tags: [access]
+      parameters:
+        - name: gateId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: denyReason
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [invalid_card, expired_card, permission_denied, gate_error, unknown]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách logs bị từ chối
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessDeniedList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /events:
+    get:
+      operationId: getAnalyticsEvents
+      summary: Lấy toàn bộ danh sách sự kiện nghiệp vụ liên quan đến Analytics
+      description: |
+        Endpoint thể hiện tính polymorphism (kế thừa và đa hình).
+        Truy vấn toàn bộ danh sách sự kiện bất kỳ (telemetry, status, camera, policy, access) theo union schema `AnalyticsEvent`.
+      tags: [events]
+      parameters:
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - telemetry.ingested
+              - device.status.changed
+              - camera.motion.detected
+              - camera.frame.analyzed
+              - camera.status.changed
+              - policy.decision.created
+              - alert.created
+              - alert.resolved
+              - access.log.created
+              - access.denied
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Danh sách sự kiện tổng hợp Analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsEventList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+webhooks:
+  telemetryIngested:
+    post:
+      operationId: onTelemetryIngested
+      summary: Webhook khi có telemetry mới
+      description: IoT Ingestion gửi event cho Analytics khi có telemetry mới.
+      tags: [telemetry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  deviceStatusChanged:
+    post:
+      operationId: onDeviceStatusChanged
+      summary: Webhook khi device status thay đổi
+      description: IoT Ingestion gửi event cho Analytics khi device status thay đổi.
+      tags: [telemetry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceStatusEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  cameraMotionDetected:
+    post:
+      operationId: onCameraMotionDetected
+      summary: Webhook khi phát hiện chuyển động
+      description: Camera Stream publish event phát hiện chuyển động.
+      tags: [camera]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CameraMotionDetectedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  cameraFrameAnalyzed:
+    post:
+      operationId: onCameraFrameAnalyzed
+      summary: Webhook khi phân tích xong frame camera
+      description: Camera Stream publish event kết quả phân tích frame.
+      tags: [camera]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CameraFrameAnalyzedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  cameraStatusChanged:
+    post:
+      operationId: onCameraStatusChanged
+      summary: Webhook khi trạng thái camera thay đổi
+      description: Camera Stream publish event khi camera thay đổi trạng thái hoạt động.
+      tags: [camera]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CameraStatusChangedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  policyDecisionCreated:
+    post:
+      operationId: onPolicyDecisionCreated
+      summary: Webhook khi có quyết định chính sách mới
+      description: Core Business publish event quyết định áp dụng policy.
+      tags: [policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyDecisionCreatedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  alertCreated:
+    post:
+      operationId: onAlertCreated
+      summary: Webhook khi alert được tạo
+      description: Core Business publish event khi phát hiện/tạo cảnh báo mới.
+      tags: [alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertCreatedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  alertResolved:
+    post:
+      operationId: onAlertResolved
+      summary: Webhook khi alert được xử lý xong
+      description: Core Business publish event khi alert được resolved thành công.
+      tags: [alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertResolvedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  accessLogCreated:
+    post:
+      operationId: onAccessLogCreated
+      summary: Webhook khi quẹt thẻ thành công/thất bại chung
+      description: Access Gate publish event lịch sử quẹt thẻ chung.
+      tags: [access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessLogCreatedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+  accessDenied:
+    post:
+      operationId: onAccessDenied
+      summary: Webhook khi quẹt thẻ bị từ chối truy cập
+      description: Access Gate publish event lượt quẹt thẻ bị từ chối chi tiết.
+      tags: [access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessDeniedEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận event
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Số item tối đa mỗi trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor của trang tiếp theo
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+
+  schemas:
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status, service, time]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        service:
+          type: string
+        time:
+          type: string
+          format: date-time
+
+    TelemetryEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, eventType, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: telemetry.ingested
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [deviceId, sensorType, value, unit, timestamp]
+          properties:
+            deviceId:
+              type: string
+              example: SENSOR-001
+            sensorType:
+              type: string
+              example: temperature
+            value:
+              type: number
+              example: 38.5
+            unit:
+              type: string
+              example: celsius
+            timestamp:
+              type: string
+              format: date-time
+            zoneId:
+              type: string
+              example: ZONE-A
+            batchId:
+              type: string
+              example: BATCH-2026-05-12-001
+
+    TelemetryList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    DeviceStatus:
+      type: object
+      additionalProperties: false
+      required: [deviceId, status, timestamp]
+      properties:
+        deviceId:
+          type: string
+          example: SENSOR-001
+        status:
+          type: string
+          enum: [online, offline, maintenance]
+          example: online
+        timestamp:
+          type: string
+          format: date-time
+        previousStatus:
+          type: string
+          enum: [online, offline, maintenance]
+        reason:
+          type: string
+
+    DeviceStatusEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, eventType, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: device.status.changed
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          $ref: '#/components/schemas/DeviceStatus'
+
+    CameraMotionDetectedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [cameraId, timestamp, motionDetected, confidence]
+          properties:
+            cameraId:
+              type: string
+              example: CAM-001
+            timestamp:
+              type: string
+              format: date-time
+            motionDetected:
+              type: boolean
+              example: true
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              example: 0.95
+            detectionId:
+              type: string
+              example: DET-2026-0001
+            zoneId:
+              type: string
+              example: ZONE-B
+            imageRef:
+              type: string
+              example: /storage/frames/cam-001/20260518-080000.jpg
+
+    CameraMotionList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CameraMotionDetectedEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    CameraFrameAnalyzedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [cameraId, timestamp, analysisStatus]
+          properties:
+            cameraId:
+              type: string
+              example: CAM-001
+            timestamp:
+              type: string
+              format: date-time
+            analysisStatus:
+              type: string
+              enum: [analyzed, skipped, failed]
+              example: analyzed
+            detectionId:
+              type: string
+            abnormalType:
+              type: string
+              enum: [none, crowd, intrusion, loitering, camera_tamper, unknown]
+              example: crowd
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              example: 0.88
+            imageRef:
+              type: string
+            zoneId:
+              type: string
+
+    CameraFrameAnalysisList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CameraFrameAnalyzedEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    CameraStatusChangedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [cameraId, status, timestamp]
+          properties:
+            cameraId:
+              type: string
+              example: CAM-001
+            status:
+              type: string
+              enum: [online, offline, degraded, maintenance]
+              example: offline
+            timestamp:
+              type: string
+              format: date-time
+            previousStatus:
+              type: string
+              enum: [online, offline, degraded, maintenance]
+            reason:
+              type: string
+              example: Heartbeat loss for 60 seconds
+            zoneId:
+              type: string
+
+    PolicyDecisionCreatedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [decisionId, policyId, subjectId, result, reasonCode, timestamp]
+          properties:
+            decisionId:
+              type: string
+              format: uuid
+            policyId:
+              type: string
+              example: POLICY-001
+            subjectId:
+              type: string
+              example: RFID-2026-001
+            result:
+              type: string
+              enum: [allow, deny]
+              example: deny
+            reasonCode:
+              type: string
+              enum: [allowed, invalid_subject, permission_denied, outside_schedule, policy_not_found, policy_expired, system_error, unknown]
+              example: permission_denied
+            timestamp:
+              type: string
+              format: date-time
+            reasonText:
+              type: string
+              example: Subject has no access permission for this gate
+            expiresAt:
+              type: string
+              format: date-time
+            relatedPolicyIds:
+              type: array
+              items:
+                type: string
+
+    PolicyDecisionList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyDecisionCreatedEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    CreateAlertRequest:
+      type: object
+      additionalProperties: true
+      required: [sourceService, alertType, severity, message]
+      properties:
+        sourceService:
+          type: string
+          minLength: 2
+          maxLength: 80
+          pattern: '^[a-z0-9-]+$'
+          description: Service tạo alert.
+          example: core-business
+        alertType:
+          type: string
+          enum: [UNAUTHORIZED_ACCESS, SENSOR_THRESHOLD_EXCEEDED, UNKNOWN_PERSON, SYSTEM_ERROR]
+          description: Loại cảnh báo.
+          example: UNAUTHORIZED_ACCESS
+        severity:
+          $ref: '#/components/schemas/AlertSeverity'
+        message:
+          type: string
+          minLength: 5
+          maxLength: 500
+          description: Nội dung cảnh báo.
+          example: Phát hiện truy cập trái phép tại cổng chính
+        relatedEventId:
+          type: string
+          format: uuid
+          description: Event liên quan, có thể bỏ qua nếu chưa có event id.
+          example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+
+    AlertSeverity:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+      description: Mức độ nghiêm trọng của cảnh báo.
+      example: HIGH
+
+    AlertCreatedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [alertId, alertType, severity, timestamp]
+          properties:
+            alertId:
+              type: string
+              format: uuid
+            alertType:
+              type: string
+              example: UNAUTHORIZED_ACCESS
+            severity:
+              type: string
+              enum: [low, medium, high, critical]
+              example: high
+            timestamp:
+              type: string
+              format: date-time
+            policyId:
+              type: string
+            decisionId:
+              type: string
+              format: uuid
+            subjectId:
+              type: string
+            message:
+              type: string
+              example: High warning detection at main campus gate
+
+    AlertResolvedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [alertId, resolvedAt, resolutionStatus]
+          properties:
+            alertId:
+              type: string
+              format: uuid
+            resolvedAt:
+              type: string
+              format: date-time
+            resolutionStatus:
+              type: string
+              enum: [resolved, false_positive, ignored, auto_resolved]
+              example: resolved
+            durationSeconds:
+              type: integer
+              example: 450
+            resolvedBy:
+              type: string
+              example: ADMIN-01
+            resolutionNote:
+              type: string
+              example: Solved by camera validation
+
+    Alert:
+      allOf:
+        - $ref: '#/components/schemas/CreateAlertRequest'
+        - type: object
+          additionalProperties: true
+          required: [id, status, createdAt, resolvedAt]
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: UUID của alert.
+              example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+            status:
+              type: string
+              enum: [OPEN, ACKNOWLEDGED, RESOLVED]
+              description: Trạng thái xử lý alert.
+              example: OPEN
+            createdAt:
+              type: string
+              format: date-time
+              description: Thời điểm tạo alert.
+              example: '2026-05-10T08:00:00Z'
+            resolvedAt:
+              type: string
+              format: date-time
+              description: Thời điểm xử lý xong, có thể bỏ qua nếu chưa xử lý.
+              example: '2026-05-10T08:30:00Z'
+
+    AlertList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    AccessLogCreatedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [cardHash, personHash, gateId, direction, result, timestamp]
+          properties:
+            cardHash:
+              type: string
+              example: a8f7c9e3b4d21056f789e2c4a6b8d0c2e4f6
+            personHash:
+              type: string
+              example: e4d2c0b8a6f4d21056f789e2c4a6b8d0c2e4
+            gateId:
+              type: string
+              example: GATE-01
+            zoneId:
+              type: string
+              example: ZONE-A
+            direction:
+              type: string
+              enum: [in, out]
+              example: in
+            result:
+              type: string
+              enum: [accepted, denied, error]
+              example: accepted
+            timestamp:
+              type: string
+              format: date-time
+
+    AccessLogList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessLogCreatedEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    AccessDeniedEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, correlationId, timestamp, source, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [cardHash, personHash, gateId, direction, denyReason, timestamp]
+          properties:
+            cardHash:
+              type: string
+              example: a8f7c9e3b4d21056f789e2c4a6b8d0c2e4f6
+            personHash:
+              type: string
+              example: e4d2c0b8a6f4d21056f789e2c4a6b8d0c2e4
+            gateId:
+              type: string
+              example: GATE-01
+            zoneId:
+              type: string
+            direction:
+              type: string
+              enum: [in, out]
+              example: in
+            denyReason:
+              type: string
+              enum: [invalid_card, expired_card, permission_denied, gate_error, unknown]
+              example: permission_denied
+            timestamp:
+              type: string
+              format: date-time
+
+    AccessDeniedList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessDeniedEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    AnalyticsEvent:
+      oneOf:
+        - $ref: '#/components/schemas/TelemetryEvent'
+        - $ref: '#/components/schemas/DeviceStatusEvent'
+        - $ref: '#/components/schemas/CameraMotionDetectedEvent'
+        - $ref: '#/components/schemas/CameraFrameAnalyzedEvent'
+        - $ref: '#/components/schemas/CameraStatusChangedEvent'
+        - $ref: '#/components/schemas/PolicyDecisionCreatedEvent'
+        - $ref: '#/components/schemas/AlertCreatedEvent'
+        - $ref: '#/components/schemas/AlertResolvedEvent'
+        - $ref: '#/components/schemas/AccessLogCreatedEvent'
+        - $ref: '#/components/schemas/AccessDeniedEvent'
+      discriminator:
+        propertyName: eventType
+        mapping:
+          telemetry.ingested: '#/components/schemas/TelemetryEvent'
+          device.status.changed: '#/components/schemas/DeviceStatusEvent'
+          camera.motion.detected: '#/components/schemas/CameraMotionDetectedEvent'
+          camera.frame.analyzed: '#/components/schemas/CameraFrameAnalyzedEvent'
+          camera.status.changed: '#/components/schemas/CameraStatusChangedEvent'
+          policy.decision.created: '#/components/schemas/PolicyDecisionCreatedEvent'
+          alert.created: '#/components/schemas/AlertCreatedEvent'
+          alert.resolved: '#/components/schemas/AlertResolvedEvent'
+          access.log.created: '#/components/schemas/AccessLogCreatedEvent'
+          access.denied: '#/components/schemas/AccessDeniedEvent'
+
+    AnalyticsEventList:
+      type: object
+      additionalProperties: false
+      required: [items, total, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsEvent'
+        total:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: string
+
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+          minLength: 3
+          maxLength: 120
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          maxLength: 500
+        instance:
+          type: string
+          format: uri
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, code, message]
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+
+  responses:
+    BadRequest:
+      description: Dữ liệu không hợp lệ
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Chưa xác thực
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Quyền truy cập bị cấm
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Không tìm thấy resource
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: Không thể xử lý yêu cầu nghiệp vụ
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalServerError:
+      description: Lỗi hệ thống
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

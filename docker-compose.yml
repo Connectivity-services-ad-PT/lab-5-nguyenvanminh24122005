@@ -28,6 +28,8 @@ services:
     command: >
       sh -c "pip install fastapi uvicorn pydantic --quiet &&
              python main.py"
+    ports:
+      - "9000:9000"
     networks:
       - team-internal
     healthcheck:
